@@ -214,8 +214,8 @@ function setCategory(category, element) {
 }
 
 async function getJoke() {
-    const url = `https://v2.jokeapi.dev/joke/${selectedCategory}`;
-
+    if(selectedCategory=="Dark") const url = `https://v2.jokeapi.dev/joke/${selectedCategory}`;
+    else const url = `https://v2.jokeapi.dev/joke/${selectedCategory}?safe-mode`
     const response = await fetch(url);
 
     if (!response.ok) {
