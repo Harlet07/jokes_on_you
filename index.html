@@ -214,11 +214,11 @@ function setCategory(category, element) {
 }
 
 async function getJoke() {
-    if(selectedCategory=="Dark"){
-        const url = `https://v2.jokeapi.dev/joke/${selectedCategory}`;
-    } else{
-        const url = `https://v2.jokeapi.dev/joke/${selectedCategory}?safe-mode`;
-    }
+    const url =
+        selectedCategory === "Dark"
+            ? `https://v2.jokeapi.dev/joke/${selectedCategory}`
+            : `https://v2.jokeapi.dev/joke/${selectedCategory}?safe-mode`;
+
     const response = await fetch(url);
 
     if (!response.ok) {
@@ -227,11 +227,9 @@ async function getJoke() {
 
     const data = await response.json();
 
-    if (data.type === "single") {
-        return data.joke;
-    }
-
-    return `${data.setup}\n\n${data.delivery}`;
+    return data.type === "single"
+        ? data.joke
+        : `${data.setup}\n\n${data.delivery}`;
 }
 
 async function nextJoke() {
