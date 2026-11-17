@@ -201,6 +201,36 @@ body {
 <script>
 let selectedCategory = "Programming";
 
+// --- Recent-joke history (last 20 joke IDs, persisted across reloads) ---
+const HISTORY_SIZE = 20;
+const HISTORY_KEY = "jokes_on_you_recent_ids";
+const BATCH_SIZE = 10;     // jokes fetched per request, to find an unseen one
+const MAX_ATTEMPTS = 3;    // requests per click before giving up on uniqueness
+
+let recentIds = loadHistory();
+
+function loadHistory() {
+    try {
+        const saved = JSON.parse(localStorage.getItem(HISTORY_KEY));
+        return Array.isArray(saved) ? saved.slice(-HISTORY_SIZE) : [];
+    } catch {
+        return [];
+    }
+}
+
+function rememberJoke(id) {
+    recentIds = recentIds.filter(x => x !== id);
+    recentIds.push(id);
+    if (recentIds.length > HISTORY_SIZE) {
+        recentIds = recentIds.slice(-HISTORY_SIZE);
+    }
+    try {
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(recentIds));
+    } catch {
+        /* storage unavailable; in-memory history still works */
+    }
+}
+
 function setCategory(category, element) {
     selectedCategory = category;
     
@@ -213,13 +243,19 @@ function setCategory(category, element) {
     nextJoke();
 }
 
-async function getJoke() {
-    const url =
-        selectedCategory === "Dark"
-            ? `https://v2.jokeapi.dev/joke/${selectedCategory}`
-            : `https://v2.jokeapi.dev/joke/${selectedCategory}?safe-mode`;
+function formatJoke(data) {
+    return data.type === "single"
+        ? data.joke
+        : `${data.setup}\n\n${data.delivery}`;
+}
 
-    const response = await fetch(url);
+async function fetchBatch() {
+    const base = `https://v2.jokeapi.dev/joke/${selectedCategory}`;
+    const params = selectedCategory === "Dark"
+        ? `?amount=${BATCH_SIZE}`
+        : `?safe-mode&amount=${BATCH_SIZE}`;
+
+    const response = await fetch(base + params);
 
     if (!response.ok) {
         throw new Error("Network Error");
@@ -227,9 +263,34 @@ async function getJoke() {
 
     const data = await response.json();
 
-    return data.type === "single"
-        ? data.joke
-        : `${data.setup}\n\n${data.delivery}`;
+    if (data.error) {
+        throw new Error(data.message || "API Error");
+    }
+
+    // With amount > 1 the API returns { jokes: [...] }; a single joke otherwise
+    return Array.isArray(data.jokes) ? data.jokes : [data];
+}
+
+async function getJoke() {
+    let fallback = null;
+
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+        const jokes = await fetchBatch();
+
+        // First joke in the batch that isn't among the last 20 shown
+        const fresh = jokes.find(j => !recentIds.includes(j.id));
+        if (fresh) {
+            rememberJoke(fresh.id);
+            return formatJoke(fresh);
+        }
+
+        if (!fallback) fallback = jokes[0];
+    }
+
+    // Small categories (e.g. Spooky) can have fewer than 20 jokes in total,
+    // so every one may be "recent". Fall back instead of failing.
+    rememberJoke(fallback.id);
+    return formatJoke(fallback);
 }
 
 async function nextJoke() {
